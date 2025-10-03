@@ -12,7 +12,24 @@ def draw_boxes(image, boxes, texts, output_fn='output.png'):
     colors = [(int(r*255), int(g*255), int(b*255)) for r, g, b in color_palette]
 
     width, height = image.size
-    absolute_boxes = [[(int(box[0] * width), int(box[1] * height), int(box[2] * width), int(box[3] * height)) for box in b] for b in boxes]
+    absolute_boxes = []
+    for b in boxes:
+        box_group = []
+        for box in b:
+            # Handle different coordinate formats
+            if len(box) == 4:
+                # Standard format: [x1, y1, x2, y2]
+                box_group.append((int(box[0] * width), int(box[1] * height), int(box[2] * width), int(box[3] * height)))
+            elif len(box) == 2:
+                # Point format: [x, y] - convert to small box around the point
+                x, y = int(box[0] * width), int(box[1] * height)
+                box_size = 20  # Small box size for points
+                box_group.append((x - box_size//2, y - box_size//2, x + box_size//2, y + box_size//2))
+            else:
+                # Skip invalid coordinate formats
+                print(f"Warning: Skipping invalid box coordinates with {len(box)} values: {box}")
+                continue
+        absolute_boxes.append(box_group)
     
     overlay = Image.new('RGBA', image.size, (255, 255, 255, 0))
     draw = ImageDraw.Draw(overlay)
@@ -40,7 +57,15 @@ def draw_boxes(image, boxes, texts, output_fn='output.png'):
     img_with_overlay.save(output_fn)
 
 def boxstr_to_boxes(box_str):
-    boxes = [[int(y)/1000 for y in x.split(',')] for x in box_str.split(';') if x.replace(',', '').isdigit()]
+    boxes = []
+    for x in box_str.split(';'):
+        if x.replace(',', '').isdigit():
+            coords = [int(y)/1000 for y in x.split(',')]
+            # Only add valid coordinate sets (2 or 4 coordinates)
+            if len(coords) in [2, 4]:
+                boxes.append(coords)
+            else:
+                print(f"Warning: Skipping invalid coordinate set with {len(coords)} values: {coords}")
     return boxes
 
 def text_to_dict(text):
@@ -76,7 +101,18 @@ def parse_response(img, response, output_fn='output.png'):
     new_img = img.resize((new_width, new_height), Image.LANCZOS)
     pattern = r"\[\[(.*?)\]\]"
     positions = re.findall(pattern, response)
-    boxes = [[[int(y) for y in x.split(',')] for x in pos.split(';') if x.replace(',', '').isdigit()] for pos in positions]
+    boxes = []
+    for pos in positions:
+        box_group = []
+        for x in pos.split(';'):
+            if x.replace(',', '').isdigit():
+                coords = [int(y) for y in x.split(',')]
+                # Only add valid coordinate sets (2 or 4 coordinates)
+                if len(coords) in [2, 4]:
+                    box_group.append(coords)
+                else:
+                    print(f"Warning: Skipping invalid coordinate set with {len(coords)} values: {coords}")
+        boxes.append(box_group)
     dic = text_to_dict(response)
     if not dic:
         texts = []
